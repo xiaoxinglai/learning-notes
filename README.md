@@ -334,6 +334,122 @@ public class DeadLock2 {
 
 
 
+##### notify和notifyAll的用法
+
+
+```
+public class NotyfyDemo {
+
+
+    private static volatile Object resourceA = new Object();
+
+    public static void main(String[] args) {
+        new Thread(() -> {
+            synchronized (resourceA) {
+                System.out.println("threadA get resourceA lock");
+                try {
+                    resourceA.wait();
+                    System.out.println("threadA end wait");
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+            }
+        }).start();
+
+        new Thread(() -> {
+            synchronized (resourceA) {
+                System.out.println("threadB get resourceA lock");
+                try {
+                    resourceA.wait();
+                    System.out.println("threadB end wait");
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+            }
+        }).start();
+
+
+        new Thread(() -> {
+
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            synchronized (resourceA) {
+                System.out.println("threadC get resourceA lock");
+                System.out.println("threadC begin notify");
+                resourceA.notify();
+                  System.out.println("threadC end notify");
+
+            }
+        }).start();
+
+
+    }
+}
+
+```
+
+
+>threadA get resourceA lock
+>threadB get resourceA lock
+>threadC get resourceA lock
+>threadC begin notify
+>threadC end notify
+>threadA end wait
+
+
+
+ThreadC先sleep了1秒  为了让ThreadA和ThreadB都能获取锁并进入wait. 
+然后调用notify 随机唤醒一个 ，这里是唤醒了ThreadA， 然后ThreadA继续执行到wait
+
+这里需要注意的是：
+1. **threadC begin notify ，ThreadC执行notify之后，并不会立即释放锁，仍然还是继续正常执行， 此时ThreadA被随机唤醒，也无法继续运行， 需要等待ThreadC的锁释放。**    所以运行结果才会是threadC begin notify -》threadC end notify-》threadA end wait
+2.要想调用某对象的notify，前提是获取了该对象的监视器锁比如说
+```
+ synchronized (**resourceB**) {
+                System.out.println("threadC get resourceA lock");
+                System.out.println("threadC begin notify");
+                **resourceA**.notify();
+                System.out.println("threadC end notify");
+
+            }
+```
+这里获取的是resourceB的监视器锁，却调用的resourceA的notify
+运行时报错：
+java.lang.IllegalMonitorStateException
+
+
+
+
+
+
+
+**notifyAll**
+ **resourceA**.notifyAll(); 此时会唤醒所有因为调用resourceA.wait而阻塞的线程
+ 
+
+```
+ synchronized (**resourceA**) {
+                System.out.println("threadC get resourceA lock");
+                System.out.println("threadC begin notify");
+                **resourceA**.notifyAll();
+                System.out.println("threadC end notify");
+
+            }
+```
+
+>threadA get resourceA lock
+>threadB get resourceA lock
+>threadC get resourceA lock
+>threadC begin notify
+>threadC end notify
+>threadB end wait
+>threadA end wait
+
 
 
 
