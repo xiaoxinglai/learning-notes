@@ -929,3 +929,74 @@ public static void main(String[] args) throws InterruptedException {
 本了应该要休眠200秒，然后被中断了 ，捕获到异常之后，进行catch处的逻辑。
 
 
+##### interrupted和isInterrupted的区别
+
+
+boolean  isInterrupted()方法
+1.isInterrupted是实例方法 
+检查当前线程是否被中断，如果是返回true，否则返回false,不会清除中断状态
+
+boolean interrupted()方法
+1.interrupted是Thread的静态方法
+
+检测当前线程是否中断，如果是返回true,否则返回false。与isInterrupted不同的是，该方法如果发现当前线程被中断，则会清除中断标志，也就是如果第一次调用是true,再次调用返回的就是false，因为之前的中断状态被清除了。
+并且该方法是static方法，可以通过Thread类直接调用。
+
+
+```
+public class isInterrupted {
+    public static void main(String[] args) {
+        Thread t=new Thread(()->{
+            for(;;){
+
+            }
+        });
+
+        t.start();
+        //设置中断标志
+        t.interrupt();
+
+        //获取中断标志 true
+        System.out.println("t.isInterrupted"+t.isInterrupted());
+
+        //获取中断标志并重置  false
+        System.out.println("t.Interrupted"+t.interrupted());
+
+        //获取中断标志并重置 false
+        System.out.println("Thread.Interrupted"+Thread.interrupted());
+
+        //获取中断标志 true
+        System.out.println("t.isInterrupted"+t.isInterrupted());
+
+
+    }
+}
+
+```
+
+输出结果
+```
+t.isInterrupted: true
+t.Interrupted: false
+Thread.Interrupted: false
+t.isInterrupted: true
+
+```
+为什么会是这个结果？
+
+       //设置中断标志  设置之后线程实例t的状态为中断 是否中断为true
+        t.interrupt(); 
+
+       //获取中断标志    这里是获取了t的中断状态 且不重置，因此是true
+        System.out.println("t.isInterrupted"+t.isInterrupted());
+
+        //获取中断标志并重置  false    这里面 t.interrupted() 是获取并重置当前线程的状态， 当前线程是main线程,interrupted是Thread的静态方法，虽然可以通过实例去调
+        //因为获取的是当前main线程的中断状态 因此返回的是false
+      
+        System.out.println("t.Interrupted"+t.interrupted());
+
+        //获取中断标志并重置 false   同上
+        System.out.println("Thread.Interrupted"+Thread.interrupted());
+
+        //获取中断标志 true   获取的是t的状态
+        System.out.println("t.isInterrupted"+t.isInterrupted());
