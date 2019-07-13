@@ -518,7 +518,126 @@ threadB end wait
 threadA end wait
 ```
 
+##### join的用法
+join方法是Thread类直接提供的，线程A调用线程B的join方法后，会被阻塞，等待B完成。
+如果此时其他线程调用了线程A的interrupt()方法，线程A会抛出InterruptException异常
 
 
 
+```
+ public static void main(String[] args) throws InterruptedException {
+        Thread threadOne=new Thread(()->{
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            System.out.println("child threadOne over!");
+        });
+
+
+
+        Thread threadtwo=new Thread(()->{
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            System.out.println("child threadTwo over!");
+        });
+
+
+        System.out.println("time:"+System.currentTimeMillis());
+        threadOne.start();
+        threadtwo.start();
+        System.out.println("wait all child thread over!");
+        threadOne.join();
+        threadtwo.join();
+        System.out.println("time:"+System.currentTimeMillis());
+        
+    }
+```
+
+输出
+```
+time:1563012587684
+wait all child thread over!
+child threadTwo over!
+child threadOne over!
+time:1563012588687
+```
+
+这里main线程调用了threadOne的join方法 ，就会进行阻塞 等待threadOne执行完毕之后返回，只有threadOne执行完毕之后，threadOne.join()方法才会返回。
+  返回之后在main线程调用threadtwo.join()，等待threadTwo完成。
+这里，threadOne和ThreadTwo都只执行1秒，所以最终的运行结果就是main线程阻塞了1秒。
+
+
+修改ThreadOne和ThreadTwo的sleep时间为5秒，3秒，最终需要等待的时间是5秒
+```
+time:1563012942271
+wait all child thread over!
+child threadOne over!
+child threadTwo over!
+time:1563012947272
+```
+
+改成
+```
+   System.out.println("time:"+System.currentTimeMillis());
+        threadOne.start();
+        threadtwo.start();
+        System.out.println("wait threadOne child thread over!");
+        threadOne.join();
+        System.out.println("wait threadtwo child thread over!");
+        threadtwo.join();
+        System.out.println("time:"+System.currentTimeMillis());
+
+```
+
+输出
+```
+time:1563013009495
+wait threadOne child thread over!
+child threadOne over!
+wait threadtwo child thread over!
+child threadTwo over!
+time:1563013014500
+```
+
+
+如果在join的时候，有其他线程调用了该线程的interrupter方法，此时会在该线程调用join()所在的行抛出InterruptedException 并立即返回。
+
+
+```
+//获取主线程
+        Thread mainThread=Thread.currentThread();
+
+        new Thread(()->{
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            mainThread.interrupt();
+            System.out.println("Interrupted main!");
+        }).start();
+```
+
+
+输出如下
+```
+time:1563013331167
+wait threadOne child thread over!
+Interrupted main!
+Exception in thread "main" java.lang.InterruptedException
+	at java.lang.Object.wait(Native Method)
+	at java.lang.Thread.join(Thread.java:1252)
+	at java.lang.Thread.join(Thread.java:1326)
+	at JoinDemo.main(JoinDemo.java:52)
+child threadOne over!
+child threadTwo over!
+
+```
 
