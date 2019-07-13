@@ -13,6 +13,7 @@
 ![avatar](https://github.com/xiaoxinglai/learning-notes/blob/master/png/java%E5%B9%B6%E5%8F%91%E7%BC%96%E7%A8%8B%E4%B9%8B%E7%BE%8E/%E5%B9%B6%E5%8F%91%E7%BC%96%E7%A8%8B%E7%BA%BF%E7%A8%8B%E5%9F%BA%E7%A1%80/%E7%BA%BF%E7%A8%8B%E7%9A%84%E5%88%9B%E5%BB%BA%E4%B8%8E%E8%BF%90%E8%A1%8C.png)
 
 ##### 3.wait
+![avatar](https://github.com/xiaoxinglai/learning-notes/blob/master/png/java%E5%B9%B6%E5%8F%91%E7%BC%96%E7%A8%8B%E4%B9%8B%E7%BE%8E/%E5%B9%B6%E5%8F%91%E7%BC%96%E7%A8%8B%E7%BA%BF%E7%A8%8B%E5%9F%BA%E7%A1%80/wait%E5%87%BD%E6%95%B0.png)
 
 
 ######  使用synchronized和wait以及notify实现生产者-消费者模式的阻塞队列
@@ -181,12 +182,17 @@ remove第一个元素之后，后面的元素会自动往左移位
 进入生产阻塞. 
 消费：1562911040567:11. 
 生产：1562911040567:21. 
+
+
+
+
+
 ######  wait的死锁例子
 当前线程调用共享变量的wait()方法之后只会释放当前共享变量上的锁，比如说XX.wait(). 只会释放XX上的监视器锁，如果当前线程还持有其他共享变量的锁，这些锁是不会释放的。
 
 因此可以模拟一下，长期获取不到锁的情况
 
-情况1:线程A资源一直不释放，另线程B则一直请求资源 
+情况1:线程A资源一直不释放，另线程B则一直请求资源 
 解决方法就是打破一直持有的条件，比如说超时释放或者请求超时就放弃
 
 ```
@@ -329,6 +335,65 @@ public class DeadLock2 {
 
 >获取resourceA的锁
 获取resourceB的锁
+
+
+
+##### wait状态下线程的中断
+
+当一个线程调用共享对象的wait（）方法被阻塞挂起后，其他线程中断了该线程，则该线程会在wait所在的行抛出InterruptedException异常并返回, 不会继续往下执行
+
+https://blog.csdn.net/qq_20009015/article/details/89449749  正常执行状态下的线程 去调用Interrupt ，线程本身不会有任何变化，这个响应逻辑需要自己写
+
+```
+/**
+ * @ClassName WaitNotifyInterupt
+ * @Author laixiaoxing
+ * @Date 2019/7/13 下午12:02
+ * @Description 线程中断的例子
+ * @Version 1.0
+ */
+public class WaitNotifyInterupt {
+
+    static Object obj = new Object();
+
+    public static void main(String[] args) {
+        Thread threadA = new Thread(() -> {
+            synchronized (obj) {
+                try {
+                    System.out.println("begin");
+                    obj.wait();
+                    System.out.println("end");
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        threadA.start();
+
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        threadA.interrupt();
+        System.out.println("Thread end");
+
+
+    }
+
+
+}
+
+```
+
+输出结果:
+>begin  
+>java.lang.InterruptedException  
+>at java.lang.Object.wait(Native Method)  
+>at java.lang.Object.wait(Object.java:502)  
+>at WaitNotifyInterupt.lambda$main$0(WaitNotifyInterupt.java:17)  
+>at java.lang.Thread.run(Thread.java:748)  
+>Thread end
 
 
 
