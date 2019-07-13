@@ -641,3 +641,69 @@ child threadTwo over!
 
 ```
 
+
+##### sleep方法的使用
+Thread类中的静态方法sleep()，当一个执行中的线程调用了Thread的sleep()方法后，调用线程会暂时让出时间的执行权，这期间不参与cpu的调度，但是该线程持有的锁是不让出的。时间到了会正常返回，线程处于就绪状态，然后参与cpu调度，获取到cpu资源之后就可以运行。
+
+如果在睡眠期间，其他线程调用了该线程的interrup()的方法中断了该线程，则该线程会调用sleep方法的地方抛出InterruptedException异常而返回
+
+```
+public class ThreadDemo {
+
+    private static Object lock = new Object();
+
+    public static void main(String[] args) {
+        new Thread(()->{
+            synchronized (lock){
+                try {
+                    System.out.println("A休眠10秒不放弃锁");
+                    Thread.sleep(10000);
+                    System.out.println("A休眠10秒醒来");
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+
+        }).start();
+
+
+
+        new Thread(()->{
+
+            synchronized (lock){
+                System.out.println("B休眠10秒不放弃锁");
+                try {
+                    Thread.sleep(10000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                System.out.println("B休眠10秒醒来");
+
+            }
+
+        }).start();
+
+
+
+    }
+}
+```
+
+
+无论执行多少次，都是先A输出再B输出 或者先B输出再A输出，不会出现交叉输出的情况，
+因为A获取到锁之后，即使是sleep也不会释放锁，因B获取不到锁，也就无法执行。
+
+输出结果
+```
+A休眠10秒不放弃锁
+A休眠10秒醒来
+B休眠10秒不放弃锁
+B休眠10秒醒来
+```
+或者
+```
+B休眠10秒不放弃锁
+B休眠10秒醒来
+A休眠10秒不放弃锁
+A休眠10秒醒来
+```
