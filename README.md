@@ -801,3 +801,131 @@ Thread[Thread-2,5,main]is over
 但是以上的结果不是每次都是这样，只是大概率，因为线程调度器可以不理会yield请求
 
 
+
+##### interrupt的用法
+java中的线程中断是一种线程间的协作模式，通过设置线程的中断标志并不能直接终止该线程的执行，而是被中断的线程根据中断状态自行处理。
+
+
+void interrupt()方法:
+中断线程，例如当线程A运行时，线程B可以调用线程A的interrupt()方法来设置线程A的中断标志为true并立即返回。设置标志仅仅是设置标志，线程A实际上并没有被中断，它会继续往下执行。如果线程A因为调用了wait系列的函数，join方法或者sleep方法而被阻塞挂起，这时候若是线程B调用线程A的interrupt()方法，线程A会在调用这些方法的地方抛出InterruptedException异常而返回。
+
+
+boolean  isInterrupted()方法:
+检查当前线程是否被中断，如果是返回true，否则返回false
+
+isInterrupted()的内部
+```
+public static boolean interrupted(){
+return currentThread.isInterrupted(false);
+}
+```
+false表示不清除中断状态
+
+
+boolean interrupted()方法:
+检测当前线程是否中断，如果是返回true,否则返回false。与isInterrupted不同的是，该方法如果发现当前线程被中断，则会清除中断标志，也就是如果第一次调用是true,再次调用返回的就是false，因为之前的中断状态被清除了。
+并且该方法是static方法，可以通过Thread类直接调用。
+
+目前已知的Thread类的静态方法有sleep(),yield(),interrupted()
+
+interrupted的内部
+```
+public static boolean interrupted(){
+return currentThread.isInterrupted(true);
+}
+```
+
+true表示清除中断标志，这里是调用当前线程的isInterrupted方法获取当前线程的中断状态，而不是调用interrupted的实例对象的中断状态
+![在这里插入图片描述](https://img-blog.csdnimg.cn/2019071321272649.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+
+
+使用中断的例子
+
+
+```
+ public static void main(String[] args) throws InterruptedException {
+
+        Thread t = new Thread(() -> {
+
+            while (!Thread.currentThread().isInterrupted()) {
+                System.out.println(Thread.currentThread() + "  hello");
+            }
+
+        });
+        t.start();
+        
+        //中断子线程
+        System.out.println("main thread interrupt thread");
+        t.interrupt();
+        //等待子线程执行完毕
+        t.join();
+
+        System.out.println("main is over");
+
+    }
+```
+
+
+输出如下
+```
+main thread interrupt thread
+Thread[Thread-0,5,main]  hello
+main is over
+```
+
+
+设计思路:
+在线程里面使用了一个while循环来进行工作，如果不是中断状态就继续执行，如果是就跳出循环，跳出循环之后，这个线程就执行结束了，自然消亡。 
+
+```
+try {
+          while (!Thread.currentThread().isInterrupted() && more work todo){
+                    //do more work
+                }
+            } catch (InterruptedException e) {
+                //thread was interrupted during sleep or wait
+            } finally {
+                //cleanup,if required
+            }
+```
+
+
+另一种场景：
+当线程为了等待一些特定的条件，会调用sleep或者wait或者join来阻塞挂起当前线程。 比如说有某个任务要3秒后才会到来，于是调用了sleep（3000）等待，那么3秒后线程才会激活，但是有可能3秒内那个需要处理的任务已经到了，这个时候继续阻塞下去就浪费了时间，可以用interrupter让这个线程从阻塞状态打断。
+
+
+比如说：
+```
+public static void main(String[] args) throws InterruptedException {
+
+        Thread t = new Thread(() -> {
+
+            try {
+                System.out.println("threadOne begin sleep for 2000 seconds");
+                Thread.sleep(200000);
+                System.out.println("threadOne awaking");
+            } catch (InterruptedException e) {
+                System.out.println("threadOne is interrupted while sleeping");
+                return;
+            }
+        });
+
+
+        t.start();
+
+        Thread.sleep(1000);
+        //中断子线程 让它从休眠中返回
+        System.out.println("main thread interrupt thread");
+        t.interrupt();
+        //等待子线程执行完毕
+        t.join();
+
+        System.out.println("main is over");
+
+    }
+
+```
+
+本了应该要休眠200秒，然后被中断了 ，捕获到异常之后，进行catch处的逻辑。
+
+
