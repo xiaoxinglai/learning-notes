@@ -181,3 +181,159 @@ remove第一个元素之后，后面的元素会自动往左移位
 进入生产阻塞. 
 消费：1562911040567:11. 
 生产：1562911040567:21. 
+######  wait的死锁例子
+当前线程调用共享变量的wait()方法之后只会释放当前共享变量上的锁，比如说XX.wait(). 只会释放XX上的监视器锁，如果当前线程还持有其他共享变量的锁，这些锁是不会释放的。
+
+因此可以模拟一下，长期获取不到锁的情况
+
+情况1:线程A资源一直不释放，另线程B则一直请求资源 
+解决方法就是打破一直持有的条件，比如说超时释放或者请求超时就放弃
+
+```
+package deadLock;
+
+/**
+ * @ClassName deadLock1
+ * @Author laixiaoxing
+ * @Date 2019/7/13 上午10:19
+ * @Description 长时间等待资源的死锁
+ * @Version 1.0
+ */
+public class DeadLock1 {
+
+
+    private static volatile Object resourceA=new Object();
+    private static volatile Object resourceB=new Object();
+
+    public static void main(String[] args) {
+        new Thread(()->{
+            synchronized (resourceA){
+                System.out.println("获取resourceA的锁");
+                synchronized (resourceB){
+                    System.out.println("获取resourceB的锁");
+                    try {
+                        //进入等待状态，此时会释放resource的监视器锁，但是不会释放resourceB的监视器锁
+                        System.out.println("进入等待状态并释放resourceA的锁");
+                        resourceA.wait();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                }
+            }
+
+        }).start();
+
+
+        new Thread(()->{
+            try {
+                Thread.sleep(1000L);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            synchronized (resourceA){
+                System.out.println("获取resourceA的锁");
+                synchronized (resourceB){
+                    System.out.println("获取resourceB的锁");
+                    try {
+                        resourceA.wait();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                }
+            }
+
+        }).start();
+    }
+
+}
+
+
+```
+
+
+>获取resourceA的锁  
+>获取resourceB的锁  
+>进入等待状态并释放resourceA的锁  
+>获取resourceA的锁
+
+
+情况2:循环等待
+线程A获取到资源a并请求资源b,线程B获取到资源b并请求资源a
+解决的方式就是 一次性获取所有资源，或者获取不到资源的超时进行放弃。
+
+
+```
+package deadLock;
+
+/**
+ * @ClassName deadLock1
+ * @Author laixiaoxing
+ * @Date 2019/7/13 上午10:19
+ * @Description 长时间等待资源的死锁
+ * @Version 1.0
+ */
+public class DeadLock2 {
+
+
+    private static volatile Object resourceA = new Object();
+    private static volatile Object resourceB = new Object();
+
+    public static void main(String[] args) {
+        new Thread(() -> {
+            synchronized (resourceA) {
+                System.out.println("获取resourceA的锁");
+                try {
+                    Thread.sleep(1000L);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                synchronized (resourceB) {
+                    System.out.println("获取resourceB的锁");
+                    //进入等待状态，此时会释放resource的监视器锁，但是不会释放resourceB的监视器锁
+                    System.out.println("进行等待状态并释放resourceA的锁");
+                }
+            }
+
+        }).start();
+
+
+        new Thread(() -> {
+
+
+            synchronized (resourceB) {
+                try {
+                    Thread.sleep(1000L);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                System.out.println("获取resourceB的锁");
+                synchronized (resourceA) {
+                    System.out.println("获取resourceA的锁");
+
+                }
+            }
+
+        }).start();
+
+
+    }
+
+
+}
+    
+
+```
+
+>获取resourceA的锁
+获取resourceB的锁
+
+
+
+
+
+
+
+
