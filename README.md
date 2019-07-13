@@ -387,20 +387,21 @@ public class WaitNotifyInterupt {
 ```
 
 输出结果:
->begin  
->java.lang.InterruptedException  
->at java.lang.Object.wait(Native Method)  
->at java.lang.Object.wait(Object.java:502)  
->at WaitNotifyInterupt.lambda$main$0(WaitNotifyInterupt.java:17)  
->at java.lang.Thread.run(Thread.java:748)  
->Thread end
-
+```
+begin  
+java.lang.InterruptedException  
+at java.lang.Object.wait(Native Method)  
+at java.lang.Object.wait(Object.java:502)  
+at WaitNotifyInterupt.lambda$main$0(WaitNotifyInterupt.java:17)  
+at java.lang.Thread.run(Thread.java:748)  
+Thread end
+```
 
 
 
 
 ##### notify和notifyAll的用法
-
+![avatar](https://github.com/xiaoxinglai/learning-notes/blob/master/png/java%E5%B9%B6%E5%8F%91%E7%BC%96%E7%A8%8B%E4%B9%8B%E7%BE%8E/%E5%B9%B6%E5%8F%91%E7%BC%96%E7%A8%8B%E7%BA%BF%E7%A8%8B%E5%9F%BA%E7%A1%80/notify.png)
 
 ```
 public class NotyfyDemo {
@@ -458,14 +459,14 @@ public class NotyfyDemo {
 
 ```
 
-
->threadA get resourceA lock
->threadB get resourceA lock
->threadC get resourceA lock
->threadC begin notify
->threadC end notify
->threadA end wait
-
+```
+threadA get resourceA lock
+threadB get resourceA lock
+threadC get resourceA lock
+threadC begin notify
+threadC end notify
+threadA end wait
+```
 
 
 ThreadC先sleep了1秒  为了让ThreadA和ThreadB都能获取锁并进入wait. 
@@ -507,13 +508,16 @@ java.lang.IllegalMonitorStateException
             }
 ```
 
->threadA get resourceA lock
->threadB get resourceA lock
->threadC get resourceA lock
->threadC begin notify
->threadC end notify
->threadB end wait
->threadA end wait
+```
+threadA get resourceA lock
+threadB get resourceA lock
+threadC get resourceA lock
+threadC begin notify
+threadC end notify
+threadB end wait
+threadA end wait
+```
+
 
 
 
