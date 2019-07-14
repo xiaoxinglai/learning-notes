@@ -1010,3 +1010,104 @@ t.isInterrupted: true
 
 线程上下文切换的时机：
 当前线程的cpu时间片使用完处于就绪状态时，当前线程被其他线程中断时
+
+
+
+##### 线程死锁
+
+什么是线程死锁？
+死锁是指两个或者两个以上的线程在执行过程中，因为争夺资源而造成的互相等待的现象。如果没有外力作用下，这些线程会一直互相等待而无法继续运行下去。
+
+
+比如说线程A持有资源1，等待资源2
+线程B持有资源2，等待资源1
+且双方都不愿意放弃自己所持有的资源
+
+死锁的四个条件：
+1.互斥条件：资源只能同时被一个线程占用，如果此时有其他线程想要获取资源，则必须等待，直到占有资源的线程释放该资源
+2.请求并持有条件：
+指一个线程已经持有了至少一个资源，但是又提出了新的资源请求，而新资源已被其他线程占用，所以当前线程会被阻塞，但是又不释放自己的资源。
+3.不可剥夺条件：
+指线程获取到资源在自己使用完之前不被其他线程抢占，只有在自己使用完毕之后才由自己释放该资源。
+4.环路等待条件：指在发生死锁时 必然存在一个线程-资源的环形链，比如说线程1等待线程2的资源，线程2等待线程1的资源 
+
+```
+
+ublic class DeadLock2 {
+
+
+    private static volatile Object resourceA = new Object();
+    private static volatile Object resourceB = new Object();
+
+    public static void main(String[] args) {
+        new Thread(() -> {
+            synchronized (resourceA) {
+                System.out.println("获取resourceA的锁");
+                try {
+                    Thread.sleep(1000L);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                synchronized (resourceB) {
+                    System.out.println("获取resourceB的锁");
+                    //进入等待状态，此时会释放resource的监视器锁，但是不会释放resourceB的监视器锁
+                    System.out.println("进行等待状态并释放resourceA的锁");
+                }
+            }
+
+        }).start();
+
+
+        new Thread(() -> {
+
+
+            synchronized (resourceB) {
+                try {
+                    Thread.sleep(1000L);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                System.out.println("获取resourceB的锁");
+                synchronized (resourceA) {
+                    System.out.println("获取resourceA的锁");
+
+                }
+            }
+
+        }).start();
+
+
+    }
+
+
+}
+```
+
+
+输出为：
+```
+获取resourceA的锁
+获取resourceB的锁
+```
+然后就无法继续往下执行了，进入了死锁状态
+
+
+
+如何避免死锁？
+只需要破坏掉四个死锁条件中的一个构造死锁的必要条件即可。
+但是只有请求并持有条件和环路等待条件是可以被破坏的。 
+资源的互斥条件和不可剥夺条件无法被破坏。
+
+**资源申请的有序性原则**
+
+让多个线程都使用相同的顺序去获取资源。
+比如说之前的线程1获取资源A再获取资源B,线程2获取资源B再获取资源A，这样有可能会发生死锁
+但是改成，线程1先获取资源A,再获取B，线程2也先获取资源A再获取资源B. 
+这样资源A只能被一个线程获取，只有获取到了资源A的线程才会继续去获取资源B。 从而避免了死锁
+
+同时破坏了环路等待条件和请求并持有条件
+
+
+**获取超时则放弃**
+
+破坏了请求并持有条件
