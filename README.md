@@ -1111,3 +1111,68 @@ ublic class DeadLock2 {
 **获取超时则放弃**
 
 破坏了请求并持有条件
+
+
+#####  守护线程与用户线程
+java中的线程分为两类，分别为daemon线程和user线程，在jvm启动时候会调用main函数，main函数所在的线程就是一个用户线程，在JVM内部还启用了很多守护线程，比如说垃圾回收线程。
+
+
+
+当最后一个非守护线程结束时候，JVM会正常退出，而不管当前是否有守护线程，也就是说守护线程是否结束并不影响JVM退出。
+
+即只要有一个用户线程还没结束，正常情况下JVM就不会退出。
+
+
+因此main线程结束之后，子线程如果是用户线程，那么不一定会结束，jvm也可能不结束
+
+
+例子如下：
+```
+
+ public static void main(String[] args) {
+        Thread t=new Thread(()->{
+            for(;;){}
+        });
+        t.start();
+        System.out.println("main thread is over");
+    }
+
+```
+
+起了一个线程，里面是个死循环，那么main线程结束之后，子线程会结束吗？
+
+答案是不会，运行jps 
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190714132005104.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+
+可以看到Daemon线程仍然在运行![在这里插入图片描述](https://img-blog.csdnimg.cn/20190714132031847.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+
+控制台的按钮也是红色，说明jvm没有退出
+![在这里插入图片描述](https://img-blog.csdnimg.cn/2019071413211916.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+
+
+如果设置该线程为守护线程呢？
+```
+
+ public static void main(String[] args) {
+        Thread t=new Thread(()->{
+            for(;;){}
+        });
+        //设置为守护线程
+        t.setDaemon(true);
+        t.start();
+        System.out.println("main thread is over");
+    }
+```
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190714132223309.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190714132230474.png)
+
+当main线程结束之后，子线程也随着结束了。
+
+因这里，main线程是唯一的用户线程，用户线程结束，jvm则会退出。
+
+
+总结:
+如果你希望在主线程结束后JVM进程马上结束，那么在创建线程时可以将其设置为守护线程。
+如果希望在主线程结束之后子线程继续工作，等子线程结束后再让JVM进程结束，那么就将子线程设置为用户线程
