@@ -1450,3 +1450,184 @@ class   StringThreadLocal extends ThreadLocal{
 总结：
 每个线程内部都有一个名为threadLocals的成员变量，该变量的类型为HashMao，其中key为我们定义的ThreadLocal变量的this引用，value则为我们使用set方法设置的值，每个线程的本地变量存放在线程自己的内存变量的threadLocals中，此使用完毕后记得调用ThreadLocal的remove方法删除对于线程的threadLocals中的本地变量。
 
+
+
+##### ThreaLocal和InheritalblThreadLoal的用法，子线程获取父线程的本地变量
+ThreaLocal中设置的变量，在子线程中无法获取
+
+```
+public class ThreadLocalExtendTest {
+
+
+    //创建线程变量
+    public  static ThreadLocal<String> threadLocal=new ThreadLocal<>();
+
+    public static void main(String[] args) {
+        threadLocal.set("hello World");
+
+        new Thread(()->{
+            System.out.println("thread:"+threadLocal.get());
+        }).start();
+
+        System.out.println("main"+threadLocal.get());
+    }
+
+```
+
+
+输出
+```
+mainhello World
+thread:null
+```
+
+
+同一个ThreadLocal变量在父线程中被设置值，然后在子线程中是获取不到的。因为在子线程thread里面调用get方法时当前线程为thread线程，而这里调用set方法设置线程变量的是main线程，两者是不同的线程，值是放在了两个不同的Thread实例的threadlocals变量里面。
+
+
+为了解决这个问题，InheritableThreadLocal继承自ThreadLocal并提供了一个特性，就是让子线程可以访问父线程中设置的变量。
+
+比如说
+```
+public class InheritableThreadLocalTest {
+
+
+    //创建线程变量
+    public  static InheritableThreadLocal<String> threadLocal=new InheritableThreadLocal<>();
+
+    public static void main(String[] args) {
+        threadLocal.set("hello World");
+
+        new Thread(()->{
+            System.out.println("thread:"+threadLocal.get());
+        }).start();
+
+        System.out.println("main"+threadLocal.get());
+
+    }
+
+```
+
+输出
+```
+mainhello World
+thread:hello World
+```
+在main线程里面设置了threadLocal的值为hello World，在子线程里面用这个threadLocal也照样获取到了。
+
+
+其内部代码实现如下：
+```
+public class InheritableThreadLocal<T> extends ThreadLocal<T> {
+ 
+    protected T childValue(T parentValue) {
+        return parentValue;
+    }
+
+    /**
+     * Get the map associated with a ThreadLocal.
+     *
+     * @param t the current thread
+     */
+    ThreadLocalMap getMap(Thread t) {
+       return t.inheritableThreadLocals;
+    }
+
+    /**
+     * Create the map associated with a ThreadLocal.
+     *
+     * @param t the current thread
+     * @param firstValue value for the initial entry of the table.
+     */
+    void createMap(Thread t, T firstValue) {
+        t.inheritableThreadLocals = new ThreadLocalMap(this, firstValue);
+    }
+}
+
+```
+
+由如上代码可知，InheritableThreadLocal继承了ThreadLocal，并重写了三个方法。 
+重写了createMap方法方法，这样在第一次调用set方法时，创建的是当前线程的inheritableThreadLocals变量的实例而不是threadLocals。
+
+重写了getMap方法，调用get的时候方法获取线程内部的map变量时，获取的是inHeritableThreadLocals而不再是threadLocals
+
+因从，在InheritalblThreadLoal里面 变量inheritableThreadLocas替代了threadLocals。
+
+
+
+那么inheritableThreadLocas是如何实现让子线程能访问到父线程的本地变量的呢？
+
+要从线程创建的时候开始说起，Thread在实例化的时候，会调用初始化函数
+```
+  public Thread(Runnable target) {
+        init(null, target, "Thread-" + nextThreadNum(), 0);
+    }
+
+
+//init方法里面
+ private void init(ThreadGroup g, Runnable target, String name,
+                      long stackSize, AccessControlContext acc,
+                      boolean inheritThreadLocals) {
+    //..省略之前无关的
+        Thread parent = currentThread();
+    //..省略中间无关的
+        if (inheritThreadLocals && parent.inheritableThreadLocals != null)
+            this.inheritableThreadLocals =
+                ThreadLocal.createInheritedMap(parent.inheritableThreadLocals);
+  //..
+ 
+    }
+
+```
+
+当主线程在创建子线程的时候，会调用init方法，在这个方法里面，会获取当前线程，
+并将当前线程的inheritableThreadLocals变量赋予子线程 。
+
+createInheritedMap(parent.inheritableThreadLocals)
+```
+static ThreadLocalMap createInheritedMap(ThreadLocalMap parentMap) {
+        return new ThreadLocalMap(parentMap);
+    }
+
+//其内部如下，对父线程的inheritableThreadLocals进行了一份拷贝
+ private ThreadLocalMap(ThreadLocalMap parentMap) {
+            Entry[] parentTable = parentMap.table;
+            int len = parentTable.length;
+            setThreshold(len);
+            table = new Entry[len];
+
+            for (int j = 0; j < len; j++) {
+                Entry e = parentTable[j];
+                if (e != null) {
+                    @SuppressWarnings("unchecked")
+                    ThreadLocal<Object> key = (ThreadLocal<Object>) e.get();
+                    if (key != null) {
+                        Object value = key.childValue(e.value);
+                        Entry c = new Entry(key, value);
+                        int h = key.threadLocalHashCode & (len - 1);
+                        while (table[h] != null)
+                            h = nextIndex(h, len);
+                        table[h] = c;
+                        size++;
+                    }
+                }
+            }
+        }
+```
+
+总结:
+InheritableThreadLocal类继承自ThreadLocal类，并通过重写方法getMap(Thread t) 和重写方法createMap(Thread t,T fistValue) 使得让本地变量获取和保存到了该线程的inheritableLocals变量里面，因此线程在通过InheritableThreadLocal类实例的set或者get方法设置变量时，就会创建当前线程的inheritableThreadLocals变量，当父线程创建子线程时，构造函数会把父线程中inheritableThreadLocals变量里面的本地变量复制一份保存到子线程的inheritableThreadLocals变量里面。 
+
+那么在什么情况下需要子线程可以获取父线程threadLocal变量呢？比如说子线程需要使用存放在ThreadLocal变量里面的用户登陆信息，再比如一些中间件需要把统一的id追踪到整个调用链路记录下来。其实子线程使用父线程的threadLocal方法有许多种方式，比如创建线程时传入父线程中的变量，并将其复制到子线程中，或者在父线程中构造一个map作为参数传递给子线程，但是最简单的方式就是使用InheritableThreadLocal。
+
+
+
+
+思路总结：
+每个Thread类里面都有两个属性threadLocals和InheritableThreadLocal，类型为ThreadLocalMap， key为ThreadLocal实例对象，value为T>。 
+在设置线程本地变量的时候，ThreadLocal实例的set方法，实际上是将要保存的本地变量放到了当前线程对象的threadLocals属性里面，放的时候key是这个ThreadLocal实例，value是要放的值。
+获取的时候根据这个ThreadLocal实例作为key去这个线程的ThreadLocals里面取。
+
+InheritableThreadLocals则是在Thread对象创建初始化的时候，从创建这个Thread对象的线程里面取到当前这个线程的InheritableThreadLocals属性的值并复制给新的Thread对象的这个属性。这样子线程就可以读到和主线程的InheritableThreadLocals属性值一样的值了
+
+InheritableThreadLocal继承了ThreadLocal类，重写了getMap和creatMap方法，以至于让get和set都是对这个Thread对象的InheritableThreadLocals属性进行操作。
