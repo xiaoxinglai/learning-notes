@@ -1768,3 +1768,24 @@ public class AtomicStampedReference<V> {
 假设变量X的初始值为A,时间戳为1，然后线程1通过cas获取到了该值，打算更新为B。 此时线程2也通过cas操作获取到了该值，然后更新为D，然后又更新回了A，此时变量X的值为A,但是时间戳已经变化了，为2。 然后此时线程1打算更新了，就会发现自己的A和预期的A不相同，因此更新失败，必须重新获取过A的值，进行更新。
 
 
+##### 9.Unsafe类
+
+Unsafe类中的重要方法
+jdk的rt.jar包中的Unsafe类提供了硬件级别的原子性操作，Unsafe类中的方法都是native方法，它们用JNI的方式访问本地c++实现库。
+
+```long objectFiedOffset(Field field)```方法
+返回指定的变量在所属类中的内存偏移地址（即内存地址），该偏移地址仅仅在该Unsafe函数中访问指定字段时候使用。
+例如:
+```vavlueOffset=unsafe.objectFieldOffset(AtomicLong.class.getDeclaredFied("value"))```
+
+
+```int arrayBaseOffset(Class arrayClass)```
+获取数组第一个元素的地址
+
+```int arrayIndexScale(Class arrayClass)```
+获取数组中一个元素占用的字节
+
+```boolean compareAndSwapLong(Object obj,long offset,long expec,long update)```
+比较对象obj中偏移量为offset的变量的值是否与expect相等，相等则使用update值更新，然后返回true，否则返回false
+
+
