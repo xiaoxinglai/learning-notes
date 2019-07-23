@@ -1789,3 +1789,23 @@ jdk的rt.jar包中的Unsafe类提供了硬件级别的原子性操作，Unsafe�
 比较对象obj中偏移量为offset的变量的值是否与expect相等，相等则使用update值更新，然后返回true，否则返回false
 
 
+
+```long getAndSetLong(Object obj,long offset,long update)```
+
+获取对象obj中偏移量为offset的变量volatitle语义的当前值，并设置变量volatitle语义的值为update
+```
+public final long getAndSetLong(Object obj, long offset, long update){
+
+long l;
+do{
+l=getLongvolatitle(obj,offset);
+}while(!compareAndSwapLong(obj,offset,l,update));
+
+return l;
+}
+```
+
+内部是通过getLongvolatitle获取当前变量的值，然后使用cas原子操作设置新值。使用while循环是考虑到，多个线程同时调用的时候cas失败需要重试
+
+
+
