@@ -1809,3 +1809,21 @@ return l;
 
 
 
+
+long getAndAddLong(Object obj,long offset,long addValue) 
+
+获取对象obj中偏移量为offset的变量volatitle语义的当前值，并设置变量值为原始值+addValue
+
+类似getAndSetLong的实现，只是这里进行CAS操作时使用了原始值+传递的增量参数addValue的值
+
+
+```
+public final long getAndAddLong(Object obj,long offset,long addValue){
+long l;
+do{
+l=getLongvolatitle(obj,offset);
+} while(!compareAndSwapLong(obj,offset,l,l+addValue))
+return l;
+}
+}
+```
