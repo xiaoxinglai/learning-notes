@@ -1827,3 +1827,66 @@ return l;
 }
 }
 ```
+
+
+
+
+
+##### Unsafe如何使用
+
+```
+public class TestUnSafe {
+
+    /**
+     * 获取Unsafe的实例
+     */
+    static final Unsafe unsafe = Unsafe.getUnsafe();
+
+    /**
+     * 记录变量state在类TestUnSafe中的偏移量
+     */
+    static final long stateOffset;
+
+    //变量
+    private volatile long state = 0;
+
+
+    static {
+
+        try {
+            //获取state变量在类TestUnSafe中的偏移值
+            stateOffset = unsafe.objectFieldOffset(TestUnSafe.class.getDeclaredField("state"));
+        } catch (Exception ex) {
+            System.out.println(ex.getLocalizedMessage());
+            throw new Error(ex);
+        }
+
+
+    }
+
+
+    public static void main(String[] args) {
+        //创建实例，并且设置state值为1
+        TestUnSafe test=new TestUnSafe();
+        Boolean sucees=unsafe.compareAndSwapInt(test,stateOffset,0,1);
+        System.out.println(sucees);
+    }
+
+
+}
+
+
+```
+
+
+获取unsafe实例，先使用，获取到偏移量stateOffset
+stateOffset = unsafe.objectFieldOffset(TestUnSafe.class.getDeclaredField("state"));
+然后使用compareAndSwapInt  修改state的值
+Boolean sucees=unsafe.compareAndSwapInt(test,stateOffset,0,1);
+
+
+结果抛异常:
+Exception in thread "main" java.lang.ExceptionInInitializerError
+Caused by: java.lang.SecurityException: Unsafe
+	at sun.misc.Unsafe.getUnsafe(Unsafe.java:90)
+	at TestUnSafe.<clinit>(TestUnSafe.java:15)
