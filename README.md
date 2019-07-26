@@ -1890,3 +1890,57 @@ Exception in thread "main" java.lang.ExceptionInInitializerError
 Caused by: java.lang.SecurityException: Unsafe
 	at sun.misc.Unsafe.getUnsafe(Unsafe.java:90)
 	at TestUnSafe.<clinit>(TestUnSafe.java:15)
+
+
+
+
+
+看下这个Unsafe的报错信息里面提到的方法Unsafe.getUnsafe()
+
+```
+
+ @CallerSensitive
+    public static Unsafe getUnsafe() {
+    
+       //获取调用getUnsafe这个方法的对象的Class对象，这里是TestUnSafe.class
+        Class var0 = Reflection.getCallerClass();
+        
+        //判断是不是Boostrap类加载器的localClass，这里是看是不是Bootstrap加载器了TestUnSafe.class
+        //很明显TestUnSafe.class是AppClassLocader加载的，所以这里直接抛出了异常 
+        if (!VM.isSystemDomainLoader(var0.getClassLoader())) {
+            throw new SecurityException("Unsafe");
+        } else {
+            return theUnsafe;
+        }
+    }
+```
+
+
+因为Unsafe类是rt.jar包提供的，rt.jar 包里面的类是使用Bootstrap类加载的，而我们的启动main函数所在的类是使用AppClassLoader加载的，所以在main函数里面加载Unsafe类时，根据委托机制，给Bootstrap去加载Unsafe类， 然后这里限制了 类加载器必须是根加载器,不然就报错了。 
+
+为什么呢？因为Unsafe类可以直接操作内存，这是不安全的，所以特意做了这个限制，而是在rt.jar包里面核心类使用Unsafe 功能。
+
+那么只能反射来获取Unsafe实例方法。
+
+先看getUnsafe方法
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190726094746451.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+返回的是theUnsafe字段, 该字段是在static块里面进行实例化的。
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190726094838138.png)
+
+
+因此 ，Usafe.getUnsafe()方法用不了的话，可以通过反射去获取Usafe里面的theUnsafe这个字段的值
+```
+ /**
+             * 通过发射获取unsafe的实例
+              */
+            Field field=Unsafe.class.getDeclaredField("theUnsafe");
+            field.setAccessible(true);
+
+            unsafe=(Unsafe)field.get(null);
+```
+
+获取到了unsafe的实例 就可以使用unsafe的方法了。
+
+
+
+
