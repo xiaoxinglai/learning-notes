@@ -1944,3 +1944,151 @@ Caused by: java.lang.SecurityException: Unsafe
 
 
 
+
+##### java指令重排序
+java内存模型允许编译器和处理器对指令重排序以提高性能，并且只会对不存在数据依赖性的指令重排序。在单线程下重排序可以保证最终执行的结果与程序顺序执行的结果一致，但是在多线程下就会存在问题。
+
+例如：
+int a=1;(1)
+int b=2;(2)
+int c=a+b;(3)
+
+在如上代码中，变量c的值依赖变量a和b的值，所以重排序只会能够保证（3)的操作在（2）和（1)之后，但是1和2谁先执行就不一定了，这在单线程下不会存在问题，因为不会影响最终结果
+
+
+通过volatitle修饰变量可以避免重排序和内存可见性问题：
+
+写volatitle变量时，可以确保volatitle写之前的操作不会被编译器重排序到volatitle写之后，读volaititle变量时，可以确保volatitle读之后的操作不会被编译器重排序到volatitle读之前。
+
+
+##### 伪共享
+什么是伪共享
+
+为了解决计算机系统中主内存与cpu之间的运行速度差问题，会在cpu与主内存之间添加一级或者多级告诉缓冲存储器Cache,这个cache一般被集成到cpu内部，也叫cpuCache ，有两级Cache结构和三级Cache结构等
+
+在Cache内部是按行存储的，其中每一行称为一个Cache行。Cache行是Cache与主内存进行数据交换的单位，Cache行的大小一般数2的幂次数字节  
+
+当cpu访问某个变量时，首先会去看cpu cache里面是否有该变量，如果有则直接从里面获取，否则就去主内存里面获取该变量，然后把该变量所在内存区域的一个Cache行大小的内存复制到Cache中，由于存放到cache行的是内存块而不是单个变量，所以可能会把多个变量存放到一个cache行中，当多个线程同时修改一个缓存行里面的多个变量时，由于只能有一个线程操作缓冲行，所以相比将每个变量放到一个缓存行，性能会有所下降，这就是伪共享。
+
+
+比如说电脑有cpu1和cpu2, 变量x被放到了cpu1和cpu2的一级缓存行和二级缓存行里面，如果线程1使用cpu1对变量x进行更新，首先会修改一级缓存变量x所在的缓存行，这时在缓存一致性协议下，cpu2中变量对应的缓存行失效，那么线程2在写入变量x的时候只能去二级缓存中查找，而一级缓存要比二级缓存更快，因此性能下降了。 同时，也说明了多个线程不可能同时去修改字节所使用的cpu中相同缓存行里面的变量。更坏的情况是，cpu只有一级缓存，则会导致频繁的访问主内存
+
+
+在多线程下并发修改一个缓存行中的多个变量时会竞争缓存行，从而导致性能降低
+
+
+为何会出现伪共享
+
+伪共享的产生是因为多个变量被放入了一个缓存行中，并且多个线程同时去写入缓存行中不同的变量，那么为何多个变量会被放入一个缓存行呢？因为缓存与内存交换数据的单位就是缓存行，当cpu要访问的变量没有在缓存中找到时候，根据程序运行的局部性原理，会把该变量在内存大小为缓存行的内存放入缓存行。
+
+long a;
+long b;
+long c;
+long d;
+
+如上代码声明了四个long变量，假设缓存行中的大小为32字节，那么当cpu访问变量a时，发现该变量没有在缓存中，就会去主内存把变量a以及内存附近的bcd放入缓存行，也就是地址连续的多个变量才有可能被放入的一个缓存行中。当创建数组时，数组里面多个元素就会被放入同一个缓存行。那么在单线程下多个变量被放入同一个缓存行对代码执行是有利的，因为数据都在缓存中，代码执行会更快
+
+
+```
+public class TestForContent {
+
+    static final int LINE_NUM=1024;
+    static final int COLUM_NUM=1024;
+
+    public static void main(String[] args) {
+        long [][] array=new long[LINE_NUM][COLUM_NUM];
+
+        long startTime=System.currentTimeMillis();
+        for (int i = 0; i <LINE_NUM ; i++) {
+            for (int j = 0; j < COLUM_NUM; j++) {
+                array[j][i]=i*2+j;
+            }
+        }
+
+        long endTime=System.currentTimeMillis();
+
+        long cacheTime=endTime-startTime;
+        System.out.println("cache time:"+cacheTime);
+
+    }
+
+
+}
+
+
+```
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190727102934745.png)
+
+
+```
+public class TestForContent {
+
+    static final int LINE_NUM=1024;
+    static final int COLUM_NUM=1024;
+
+    public static void main(String[] args) {
+        long [][] array=new long[LINE_NUM][COLUM_NUM];
+
+        long startTime=System.currentTimeMillis();
+        for (int i = 0; i <LINE_NUM ; i++) {
+            for (int j = 0; j < COLUM_NUM; j++) {
+                array[i][j]=i*2+j;
+            }
+        }
+
+        long endTime=System.currentTimeMillis();
+
+        long cacheTime=endTime-startTime;
+        System.out.println("cache time:"+cacheTime);
+
+    }
+
+
+}
+```
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190727103004978.png)
+
+
+
+为什么这个代码执行的比上面的代码快？
+因为数组元素的内存地址是连续的，当访问数组第一个元素时，会把第一个元素后面的若干个元素一起放到缓存行，这样顺序访问数组元素时候会在缓存直接命中，就不会去主内存读了。也就是一次内存访问可以让后续多个访问都命中缓存。
+
+而代码2是跳跃性访问数组的，不是顺序的，因此下一次访问的并不是加载到缓存里的，而且缓存是有容量控制的，如果满了会根据一定的淘汰算法替换缓存行，这会导致从内存置换过来的缓存行元素还没等到被读取就被替换掉了。
+
+
+如何避免伪共享
+
+在jdk8之前一般都是通过字节填充的方式来避免该问题，也就是创建一个变量的时候，用填充字段填充该变量所在的缓存行，这样就避免了将多个变量存放在同一个缓存行中。
+
+例如：
+public final static class FilledLong{
+public volatile long value=0L;
+public long p1,p2,p3,p4,p5,p6;
+
+}
+
+
+假如缓存行为64个字节，那么在FiledLong类里面填充了6个long类型的变量，每个long类型的变量占用8字节，加上vlaue变量的8字节 总共56个字节，另外FiledLong是一个类对象，而类对象的字节码对象头是8个字节，这样一个FiledLong对象实际占用64个字节，这刚好可以放下一个缓存行
+
+jdk8提供了一个sun.misc.Comtended注解，用来解决伪共享的问题，将上面代码修改为
+
+@sun.misc.Comtended
+public final static class FilledLong{
+public volatile long value=0L;
+
+}
+
+这个注解也可以用来修饰变量，比如说在Thread类里面就有：
+@sun.misc.Comtended("tlr")
+int threadLocalRandomSeed
+
+
+默认情况下
+@sum.misc.Comtend注解只用于java核心类，比如rt下的类，如果用户类路径下想用，需要加jvm参数: -XX:-RestrictContended
+
+填充宽度默认为128
+如果要自定义宽度，则设置参数 -XX:ComtendPaddingWidth
+
+
+
