@@ -2222,3 +2222,182 @@ helloA（）；
 自旋锁
 
 由于java中的线程是与操作系统中的线程一一对应的，所以当一个线程在获取锁（如独占锁）失败之后，会被切换到内核状态而被挂起，当该线程获取到锁时又需要再次切换，然后从用户状态切换到内核状态的开销是比较大的，在一定程度上影响并发性能。自旋锁则是，当前线程在获取锁时，如果发现锁已经被其他线程占有，它不马上阻塞自己，在不放弃cpu的情况下，多次尝试，默认次数是10，可以使用-XX:PreBlockSpinsh参数设置该值， 很可能在后面的几次尝试中其他线程已经释放了锁，如果次数耗尽还没获取到锁才会被阻塞挂起。
+
+
+
+
+
+##### java并发包中ThreadLocalRandom类原理剖析
+Random类及其局限性
+
+ThreadLocalRandom类是jdk7在juc包下新增的随机数生成器，它弥补了Random类在多线程下的缺陷。
+
+jdk7之前包括现在，Random类都是使用比较广泛的随机数生成器，Math中随机数生成也是使用的Randmon实例
+
+```
+  public Random() {
+        this(seedUniquifier() ^ System.nanoTime());
+    }
+
+    private static long seedUniquifier() {
+        // L'Ecuyer, "Tables of Linear Congruential Generators of
+        // Different Sizes and Good Lattice Structure", 1999
+        for (;;) {
+            long current = seedUniquifier.get();
+            long next = current * 181783497276652981L;
+            if (seedUniquifier.compareAndSet(current, next))
+                return next;
+        }
+    }
+
+    private static final AtomicLong seedUniquifier
+        = new AtomicLong(8682522807148012L);
+
+```
+
+  //随机数生成需要一个默认的种子，是一个long类型的数字， 种子相同次每次随机生成的数组均相同
+    //可以在构造函数中指定种子  Random random=new Random(1);
+    //但是如果不指定，则使用默认的
+    //默认种子一个原子常量和当前时间的纳秒值进行位运算 。
+    //原子常量每使用一次都会更新 为静态常量，以确保全局不会出现重复的种子
+
+```
+
+        //创建一个默认种子的随机数生成器
+        Random random=new Random();
+        for (int i = 0; i <10 ; i++) {
+            //输出10个在0-5之间的随机数 ，包含0 不包含5
+            System.out.println(random.nextInt(5));
+        }
+```
+
+
+
+```
+ //有了默认种子之后 如何生成随机数
+//    public int nextInt(int bound) {
+//        if (bound <= 0)
+//            throw new IllegalArgumentException(BadBound);
+//
+    //根据老的种子生成新的种子
+//        int r = next(31);
+//        int m = bound - 1;
+    //根据新的种子计算新的随机数
+//        if ((bound & m) == 0)  // i.e., bound is a power of 2
+//            r = (int)((bound * (long)r) >> 31);
+//        else {
+//            for (int u = r;
+//                 u - (r = u % bound) + m < 0;
+//                 u = next(31))
+//                ;
+//        }
+//        return r;
+//    }
+
+    //新的随机数生成需要两个步骤，首先根据老的种子生成新的种子，然后根据新的种子来计算新的随机数
+
+    //在单线程下每次调用nextInt都是根据老的种子算出新的种子
+//    protected int next(int bits) {
+//        long oldseed, nextseed;
+//        AtomicLong seed = this.seed;
+//        do {
+//            oldseed = seed.get();
+//            nextseed = (oldseed * multiplier + addend) & mask;
+//        } while (!seed.compareAndSet(oldseed, nextseed));
+//        return (int)(nextseed >>> (48 - bits));
+//    }
+
+
+```
+
+
+在多线程下，多个线程可能拿到同一个种子去计算新的种子，那么就会进入cas重试的阶段，因为要保证只有一个线程可以更新老的种子为新的，
+   更新失败的线程需要获取到最新的种子再次计算，保证种子不重复才能保证随机数的随机性。
+
+    每个Random实例里面都有一个原子性的种子变量用来记录当前的种子值，当要生成新的随机数时需要根据当前种子计算新的种子并更新回原子变量
+   在多线程下使用单个Random实例生成随机数时，多个线程同时计算随机数来计算新的种子时，多个线程会竞争同一个原子变量的更新操作，由于原子变量的更新是cas操作，同时只有一个线程会成功，所以造成大量线程自旋重试，这会降低并发性能，于是ThreadLocalRandom应运而生。
+
+
+
+
+ThreadLocalRandom
+
+
+//创建一个默认种子的随机数生成器
+        ThreadLocalRandom threadLocalRandom= ThreadLocalRandom.current();
+        for (int i = 0; i <10 ; i++) {
+            //输出10个在0-5之间的随机数 ，包含0 不包含5
+            System.out.println(threadLocalRandom.nextInt(5));
+        }
+
+
+ThreadLocalRandom的实现原理，也是让每个线程都维护一个自己的种子变量，每个线程生成随机数时都根据自己老的种子计算新的种子，再根据新的种子计算随机数，不存在竞争问题。
+
+Random的缺点就是多个线程使用一个random实例的时候，会使用同一个原子性种子变量，从而导致对原子变量更新的竞争
+
+
+
+源码分析
+
+ThreadLocalRandom继承自Random并重写了Random类的nextInt方法。
+而且这个类并没有使用Random类的seed，在ThreadLocalRandom类中没有保存具体的种子，种子存放在Thread类的threadLocalRandomSeed变量里面，也就是当前线程的本地变量。
+ThreadLocalRandom类似于ThreadLocal类，是个工具类，当调用ThreadLocalRandom.current方法时，ThreadLocalRandom负责初始化调用线程的threadLocalRandimseed变量，也就是初始化种子。
+
+当调用ThreadLocalRandom的nextInt方法时，实际上是获取当前线程的threadLocalRandomSeed变量作为当前种子计算新的种子，并更新新的种子到当前线程的threadLocalRandomSeed变量里面，然后再根据新的种子计算新的随机数。
+注意的是，这个种子是普通的long型，不是原子性的，因为作为线程本地变量，只有一个线程会使用，不会冲突。
+
+
+
+unsafe机制
+
+  static {
+        try {
+
+//获取unsafe实例
+            UNSAFE = sun.misc.Unsafe.getUnsafe();
+//获取Thread类里面的threadLocalRandomSeed变量在Thread实例里面的偏移量
+            Class<?> tk = Thread.class;
+            SEED = UNSAFE.objectFieldOffset
+                (tk.getDeclaredField("threadLocalRandomSeed"));
+//获取Thread类里面threadLocalRandomProbe变量在Thread实例里面的偏移量
+            PROBE = UNSAFE.objectFieldOffset
+                (tk.getDeclaredField("threadLocalRandomProbe"));
+//获取Thread类里面threadLocalRandomSecondarySeed变量在Thread实例里面的偏移量
+            SECONDARY = UNSAFE.objectFieldOffset
+                (tk.getDeclaredField("threadLocalRandomSecondarySeed"));
+        } catch (Exception e) {
+            throw new Error(e);
+        }
+    }
+
+
+ThreadLocalRandom current()方法
+
+该方法获取ThreadLocalRandom实例，并初始化调用线程中的threadLocalRandomSeed和threadLocalRandomProbe变量
+
+
+```
+   /** The common ThreadLocalRandom */
+    static final ThreadLocalRandom instance = new ThreadLocalRandom();
+
+
+public static ThreadLocalRandom current() {
+        if (UNSAFE.getInt(Thread.currentThread(), PROBE) == 0)
+            localInit();
+        return instance; 
+}
+
+
+
+
+ static final void localInit() {
+        int p = probeGenerator.addAndGet(PROBE_INCREMENT);
+        int probe = (p == 0) ? 1 : p; // skip 0
+        long seed = mix64(seeder.getAndAdd(SEEDER_INCREMENT));
+        Thread t = Thread.currentThread();
+        UNSAFE.putLong(t, SEED, seed);
+        UNSAFE.putInt(t, PROBE, probe);
+    }
+    }
+
+```
