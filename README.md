@@ -2404,4 +2404,129 @@ public static ThreadLocalRandom current() {
 
 ```
 
-签到
+ThreadLocalRandom使用ThreadLocal的原理，让每个线程都持有一个本地的种子变量，该种子变量只有在使用随机数时才会被初始化，在多线程下计算新种子时是根据自己线程内维护种子变量进行更新，从而避免了竞争。 
+
+
+
+###### LockSupport工具类学习
+jdk的rt.jar包里面的LockSupport是个工具类，主要作用了挂起和唤醒线程，该工具类是创建锁和其他同步类的几次。
+
+调用park()系列的方法可以使线程进入阻塞状态，调用unpark方法可以唤醒。
+功能类似wait和notify，但是不需要像wait和notify那样必须在synchronized的范围内使用
+且如果先调用了unpark再调用park，此线程是不会进入阻塞状态的,原因是调用unpark(Thread)的时候，已经给了该线程一个许可证，park的原理是没有许可证的进入阻塞状态。
+但是如果先调用notify 再调用wait 线程依然会进入阻塞。
+
+
+内部是使用了unsafe类实现。
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190810163854285.png)
+
+unsafe的park是个native方法
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190810163918672.png)
+
+
+使用例子
+```
+
+public class LockSupportDemo {
+
+    public  void testPark(){
+        LockSupport.park();
+    }
+
+
+    public static void main(String[] args) {
+        LockSupportDemo lockSupportDemo=new LockSupportDemo();
+        lockSupportDemo.testPark();
+
+    }
+}
+
+```
+
+随机发现线程挂起了
+
+使用jps查看pid
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190810164030440.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+
+我的程序名是LockSupportDemo
+
+用jstack查看此pid的状态
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190810164245614.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+
+可以看到此时main的线程状态为waiting
+
+
+park方法还支持带有blocker参数的方法 void park(Object blocker) 
+当线程调用park方法且进入到了阻塞状态时，这个blocker对象会被记录到该线程内部
+此时使用诊断工具可以看到线程被阻塞的原因，是通过调用getBlocker(Thread)方法来获取blocker对象的。
+因此推荐使用带有blocker参数的park方法，并且blocker被设置为this,这样当在打印线程堆栈排查问题时就能知道是哪个类被阻塞了。
+
+
+例如：
+```
+
+public class LockSupportDemo {
+
+    public  void testPark(){
+        LockSupport.park(this);
+    }
+
+
+    public static void main(String[] args) {
+        LockSupportDemo lockSupportDemo=new LockSupportDemo();
+        lockSupportDemo.testPark();
+
+    }
+   }
+
+```
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190810164940121.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+跟上图相比，多了一行信息，parking to wait for  XXXX。
+
+
+此方法的源码
+setBlocker将blocker对象保存到了Thread实例对象里面
+```
+public static void park(Object blocker) {
+        Thread t = Thread.currentThread();
+        setBlocker(t, blocker);
+        UNSAFE.park(false, 0L);
+        setBlocker(t, null);
+    }
+```
+
+保存是通过UNSAFE工具类直接设定的
+```
+private static void setBlocker(Thread t, Object arg) {
+        // Even though volatile, hotspot doesn't need a write barrier here.
+        UNSAFE.putObject(t, parkBlockerOffset, arg);
+    }
+
+```
+具体保存的位置是Thread实例的volatile Object parkBlocker; 这个成员变量里面
+![在这里插入图片描述](https://img-blog.csdnimg.cn/2019081016582680.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
+也就是通过unsafe工具类直接操作内存将这个参数保存进了这个线程实例的parkBlocker成员变量里面。
+
+
+
+其他带有时间的参数类型wait带有时间的参数方法，都是阻塞一段时间然后自动唤醒。
+比如说void parkNanos (long nanos); 纳秒
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
