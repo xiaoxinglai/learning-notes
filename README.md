@@ -2516,7 +2516,114 @@ private static void setBlocker(Thread t, Object arg) {
 比如说void parkNanos (long nanos); 纳秒
 
 
+###### 使用LocalSupport和队列设计一个先入先出的锁
+使用LocalSupport和队列设计一个先入先出的锁
 
+```
+public class FIFOMutex {
+
+/**
+* 等待队列，只有队首的线程有资格获得锁
+*/
+    private final Queue<Thread> waiters = new ConcurrentLinkedQueue<Thread>();
+    /**
+     * 0 无锁  1 有锁
+     */
+    private volatile AtomicInteger lock = new AtomicInteger(0);
+
+    public void lock() {
+        //获取当前调用该方法的线程对象
+        Thread current = Thread.currentThread();
+        //将该线程加入到等待队列中
+        waiters.add(current);
+
+        //当获取到的队首线程不是当前线程  且将锁状态从无锁改到有锁失败 
+        while (waiters.peek() != current || !lock.compareAndSet(0, 1)) {
+            //将当前线程挂起
+            LockSupport.park(this);
+        }
+    }
+
+
+    public void unlock() {
+        //获取当前调用该方法的线程对象
+        Thread current = Thread.currentThread();
+        //当前线程等于队列首线程
+        if (waiters.peek()==current){
+            //释放锁标志 将锁从有锁改为无锁
+           lock.compareAndSet(1, 0);
+              ///将队首线程从等待队列移除 
+               waiters.remove();  
+               //唤醒队首线程 
+               LockSupport.unpark(waiters.peek());
+        }
+    }
+
+
+    public static void main(String[] args) {
+
+        FIFOMutex fifoMutex=new FIFOMutex();
+
+        new Thread(() -> {
+            //获取锁
+            fifoMutex.lock();
+            System.out.println("线程1获取到了锁");
+
+            try {
+                Thread.sleep(10000L);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            fifoMutex.unlock();
+        }).start();
+
+
+         new Thread(() -> {
+
+             try {
+                 Thread.sleep(1000L);
+             } catch (InterruptedException e) {
+                 e.printStackTrace();
+             }
+
+             System.out.println("线程2尝试获取锁");
+            fifoMutex.lock();
+            System.out.println("线程2尝试获取锁成功");
+            fifoMutex.unlock();
+        }).start();
+
+
+
+         new Thread(() -> {
+            try {
+                Thread.sleep(3000L);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println("线程3直接unlock");
+            fifoMutex.unlock();
+            System.out.println("线程3直接unlock成功");
+        }).start();
+
+    }
+
+
+}
+
+```
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190810214832818.png)
+
+
+测试里面有三个线程， 第一个线程调用lock方法， 判断是否是队首线程且修改锁状态成功，使用cas方法去修改锁状态，只有一个能修改成功，如果成功则代表成功获取到了锁 ，如果失败则调用park方法进入阻塞状态。 
+然后休眠10秒， 期间第二个线程去尝试获取锁，进入阻塞，然后第三线程直接unlock但是由于它不是队首线程， 因此不能解锁。  然后第一个线程10秒后时间到了 ，调用unlock方法，先判断这个线程是不是队首线程，如果是，则修改锁状态无锁且将该线程从队首移出，然后唤醒新的队首线程。
+
+
+
+
+如果将我自定义的锁换成ReentrantLock ，那么直接unlock会抛非法的监视器锁状态异常
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190810221405390.png)
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190810221358794.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzIwMDA5MDE1,size_16,color_FFFFFF,t_70)
 
 
 
